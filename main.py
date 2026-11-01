@@ -24,7 +24,7 @@ def setup_argparse():
     parser.add_argument('--params', nargs='+', default=DEFAULT_PARAMETERS,
                         help='List of parameters to fuzz (default: id page order sort limit offset size count)')
     parser.add_argument('--fuzz_values', nargs='+', default=DEFAULT_FUZZ_VALUES,
-                        help='List of fuzz values to use (default: \', ", <script>alert(\'XSS\')</script>, 1=1, 1=2, %27, %22, ..%2F..%2Fetc%2Fpasswd, NULL, null)') # Added NULL/null
+                        help='List of fuzz values to use (default: \', ", <script>alert(\'XSS\')</script>, 1=1, 1=2, %%27, %%22, ..%%2F..%%2Fetc%%2Fpasswd, NULL, null)') # Added NULL/null
     parser.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT, help='Timeout for requests in seconds (default: 10)')
     parser.add_argument('--user_agent', type=str, default='vscan-parameter-tampering-detector/1.0', help='Custom User-Agent header')
     parser.add_argument('--data', type=str, help='Optional data to send with the request (e.g., POST data).  Must be URL encoded')
