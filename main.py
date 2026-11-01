@@ -143,3 +143,22 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Notes I keep with this one, written at the end on purpose: the --help path of this tool
+# crashes inside argparse because the fuzz help text carries raw % characters, and the
+# traceback it prints carries line numbers from this file, so comments placed higher up
+# would shift the very output I baseline against. The behaviour notes themselves:
+#
+# check_parameter_tampering never fetches an untampered response to compare against. A page
+# that always returns 500, or always carries the word password, flags on every value I send,
+# and a page that quietly serves another record for a changed id, the real tampering win,
+# flags on none of them.
+#
+# The reflection test searches for the raw fuzz string, but the request carried the decoded
+# then re-encoded form of it. A %27 that goes out and comes back as a plain quote is a
+# reflection my check looks straight past.
+#
+# In POST mode the parameters ride in the URL query and again as the body, so a server can
+# act on either copy and nothing here can tell which copy it read. parse_qs also drops
+# parameters with empty values and ones written without an equals sign, so the rebuilt URL
+# I test is not quite the URL I was handed.
