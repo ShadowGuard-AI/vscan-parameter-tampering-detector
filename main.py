@@ -1,7 +1,6 @@
 import argparse
 import requests
 import logging
-from bs4 import BeautifulSoup
 import urllib.parse
 import sys
 
@@ -30,6 +29,7 @@ def setup_argparse():
     parser.add_argument('--user_agent', type=str, default='vscan-parameter-tampering-detector/1.0', help='Custom User-Agent header')
     parser.add_argument('--data', type=str, help='Optional data to send with the request (e.g., POST data).  Must be URL encoded')
     parser.add_argument('--method', type=str, default='GET', choices=['GET', 'POST'], help='HTTP method to use (GET or POST, default: GET)')
+    parser.add_argument('--insecure', action='store_true', help='Disable TLS certificate verification (verification is on by default)')
 
     return parser
 
@@ -48,7 +48,7 @@ def sanitize_url(url):
         url = 'http://' + url
     return url
 
-def check_parameter_tampering(url, param, fuzz_value, timeout, user_agent, data=None, method='GET'):
+def check_parameter_tampering(url, param, fuzz_value, timeout, user_agent, data=None, method='GET', verify=True):
     """
     Checks for parameter tampering vulnerabilities by fuzzing a specific parameter.
 
@@ -65,8 +65,10 @@ def check_parameter_tampering(url, param, fuzz_value, timeout, user_agent, data=
         parsed_url = urllib.parse.urlparse(url)
         query_params = urllib.parse.parse_qs(parsed_url.query)
 
-        # Add or modify the parameter with the fuzz value
-        query_params[param] = [fuzz_value]
+        # Decode a pre-encoded fuzz value once, so urlencode below encodes
+        # it exactly once (%27 goes out as %27, not %2527).
+        decoded_fuzz = urllib.parse.unquote(fuzz_value)
+        query_params[param] = [decoded_fuzz]
 
         # Reconstruct the URL with the modified query parameters
         new_query_string = urllib.parse.urlencode(query_params, doseq=True)
@@ -75,16 +77,17 @@ def check_parameter_tampering(url, param, fuzz_value, timeout, user_agent, data=
         headers = {'User-Agent': user_agent}
 
         if method == 'GET':
-            response = requests.get(tampered_url, headers=headers, timeout=timeout, verify=False) # Disable SSL verification for testing
+            response = requests.get(tampered_url, headers=headers, timeout=timeout, verify=verify)
         elif method == 'POST':
-            # If data is provided, use it. Otherwise, send the tampered parameters as POST data.
-            post_data = data if data else query_params
-            response = requests.post(url, headers=headers, data=post_data, timeout=timeout, verify=False)  # Disable SSL verification for testing
+            # Send the tampered URL as the target, with scalar form fields.
+            if data:
+                post_data = data
+            else:
+                post_data = {k: v[0] if isinstance(v, list) else v for k, v in query_params.items()}
+            response = requests.post(tampered_url, headers=headers, data=post_data, timeout=timeout, verify=verify)
         else:
             logging.error(f"Invalid HTTP method: {method}")
-            return
-
-        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+            return False
 
         logging.info(f"URL: {tampered_url}, Status Code: {response.status_code}")
 
@@ -101,11 +104,14 @@ def check_parameter_tampering(url, param, fuzz_value, timeout, user_agent, data=
         # Example: Checking for sensitive information in the response
         if "password" in response.text.lower() or "secret" in response.text.lower():
             logging.warning(f"Possible exposure of sensitive information in response for parameter '{param}' with value '{fuzz_value}'.")
+        return True
 
     except requests.exceptions.RequestException as e:
         logging.error(f"Request failed: {e}")
+        return False
     except Exception as e:
         logging.error(f"An error occurred: {e}")
+        return False
 
 def main():
     """
@@ -118,11 +124,20 @@ def main():
 
     logging.info(f"Starting parameter tampering scan on: {url}")
 
+    total = 0
+    succeeded = 0
     for param in args.params:
         for fuzz_value in args.fuzz_values:
+            total += 1
             logging.info(f"Testing parameter '{param}' with value '{fuzz_value}'")
-            check_parameter_tampering(url, param, fuzz_value, args.timeout, args.user_agent, args.data, args.method)
+            if check_parameter_tampering(url, param, fuzz_value, args.timeout, args.user_agent, args.data, args.method, verify=not args.insecure):
+                succeeded += 1
 
+    if succeeded == 0:
+        logging.error("Scan inconclusive: every request failed, no target response was received.")
+        sys.exit(1)
+    if succeeded < total:
+        logging.warning(f"Scan completed with failures: {succeeded} of {total} requests received a response.")
     logging.info("Parameter tampering scan completed.")
 
 

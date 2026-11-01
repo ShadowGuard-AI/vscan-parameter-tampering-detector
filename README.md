@@ -15,6 +15,7 @@ Identifies potential parameter tampering vulnerabilities by fuzzing common param
 - `--user_agent`: Custom User-Agent header
 - `--data`: No description provided
 - `--method`: No description provided
+- `--insecure`: Disable TLS certificate verification (verification is on by default)
 
 ## License
 Copyright (c) ShadowGuardAI
